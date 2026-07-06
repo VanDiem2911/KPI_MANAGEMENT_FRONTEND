@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { dashboardApi, compareApi } from "../api";
+import KpiEntryPage from "./KpiEntryPage";
+import KpiHistoryPage from "./KpiHistoryPage";
+import ReportPage from "./ReportPage";
+import KpiTargetPage from "./KpiTargetPage";
 import {
   Users, DollarSign, Handshake, MessageSquare,
   TrendingUp, TrendingDown, Minus, Target, Calendar,
@@ -9,6 +14,18 @@ import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+
+const getWorkingDaysInMonth = (year: number, month: number) => {
+  let count = 0;
+  const days = new Date(year, month, 0).getDate();
+  for (let i = 1; i <= days; i++) {
+    const day = new Date(year, month - 1, i).getDay();
+    if (day !== 0 && day !== 6) {
+      count++;
+    }
+  }
+  return count;
+};
 
 interface CompareItem {
   current: number;
@@ -77,6 +94,10 @@ function StatCard({ title, value, icon: Icon, compare, color = "primary" }: {
 }
 export default function DashboardPage() {
   const { isAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = (searchParams.get("tab") as "overview" | "history") || "overview";
+  const [activeTab, setActiveTab] = useState<"overview" | "history">(initialTab === "overview" || initialTab === "history" ? initialTab : "overview");
+
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -86,6 +107,47 @@ export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [compareData, setCompareData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isKpiModalOpen, setIsKpiModalOpen] = useState(false);
+
+  const [selectedKpiDate, setSelectedKpiDate] = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const dateParam = searchParams.get("date");
+    if (tab === "entry") {
+      const todayStr = (() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      })();
+      setSelectedKpiDate(dateParam || todayStr);
+      setIsKpiModalOpen(true);
+      setSearchParams((prev) => {
+        prev.delete("tab");
+        prev.delete("date");
+        return prev;
+      });
+    } else if (tab === "overview" || tab === "history") {
+      setActiveTab(tab);
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleTabChange = (tab: "overview" | "history") => {
+    setActiveTab(tab);
+    setSearchParams((prev) => {
+      prev.set("tab", tab);
+      return prev;
+    });
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,7 +166,7 @@ export default function DashboardPage() {
       }
     };
     fetchData();
-  }, [selectedMonth]);
+  }, [selectedMonth, refreshTrigger]);
 
   if (loading && !data) {
     return (
@@ -116,136 +178,248 @@ export default function DashboardPage() {
 
   if (!data) return <p className="text-gray-500">Không có dữ liệu</p>;
 
-  return isAdmin ? (
-    <AdminDashboard data={data} compare={compareData} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />
-  ) : (
-    <UserDashboard data={data} compare={compareData} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />
-  );
-}
+  if (isAdmin) {
+    return (
+      <AdminDashboard data={data} compare={compareData} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />
+    );
+  }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function AdminDashboard({ data, compare, selectedMonth, setSelectedMonth }: { data: any; compare: any; selectedMonth: string; setSelectedMonth: (m: string) => void }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Tổng quan KPI toàn hệ thống</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chọn tháng:</label>
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="input-field py-1.5 px-3 text-sm font-medium w-40 h-10"
+    <div className="space-y-6">
+      {/* Tab bar header */}
+      <div className="flex justify-center border-b border-gray-200/80 -mx-6 px-6 bg-white -mt-6 pt-4 sticky top-0 z-20 shadow-sm">
+        <button
+          onClick={() => handleTabChange("overview")}
+          className={`pb-3 px-4 text-sm font-semibold transition-all duration-200 border-b-2 relative ${
+            activeTab === "overview"
+              ? "border-primary-600 text-primary-600 font-bold"
+              : "border-transparent text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Tổng quan
+        </button>
+        <button
+          onClick={() => handleTabChange("history")}
+          className={`pb-3 px-4 text-sm font-semibold transition-all duration-200 border-b-2 relative ${
+            activeTab === "history"
+              ? "border-primary-600 text-primary-600 font-bold"
+              : "border-transparent text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Lịch sử KPI
+        </button>
+      </div>
+
+      <div className="pt-2">
+        {activeTab === "overview" && (
+          <UserDashboard 
+            data={data} 
+            compare={compareData} 
+            selectedMonth={selectedMonth} 
+            setSelectedMonth={setSelectedMonth} 
+            onOpenKpiModal={() => {
+              const todayStr = (() => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, "0");
+                const day = String(d.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+              })();
+              setSelectedKpiDate(todayStr);
+              setIsKpiModalOpen(true);
+            }}
           />
-        </div>
+        )}
+        {activeTab === "history" && <KpiHistoryPage />}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Tổng nhân viên" value={data.totalUsers} icon={Users} color="blue" />
-        <StatCard title="Doanh thu tháng" value={data.monthKpi?.doanhThu || 0} icon={DollarSign} compare={compare?.doanhThu} color="green" />
-        <StatCard title="Chốt Deal tháng" value={data.monthKpi?.chotDeal || 0} icon={Handshake} compare={compare?.chotDeal} color="orange" />
-        <StatCard title="Tổng IB tháng" value={(data.monthKpi?.ibZalo || 0) + (data.monthKpi?.ibFacebook || 0)} icon={MessageSquare} color="purple" />
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Doanh thu 30 ngày</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={data.chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="_id" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} interval="preserveStart" />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => formatNumber(v)} />
-              <Tooltip formatter={(v: any) => formatNumber(Number(v))} />
-              <Area type="monotone" dataKey="doanhThu" stroke="#6366f1" fill="#e0e7ff" strokeWidth={1.5} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="card p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">IB & Deal 30 ngày</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={data.chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="_id" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} interval="preserveStart" />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip />
-              <Bar dataKey="ibZalo" name="IB Zalo" fill="#4d08ef" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="ibFacebook" name="IB Facebook" fill="#1877f2" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="chotDeal" name="Chốt Deal" fill="#10b981" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Top Employees & KPI Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Top nhân viên (Doanh thu tháng)</h3>
-          <div className="space-y-2">
-            {data.topEmployees?.map((emp: { _id: string; user: { fullName: string; department: string }; totalDoanhThu: number; totalChotDeal: number }, i: number) => (
-              <div key={emp._id} className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                  i === 0 ? "bg-yellow-500" : i === 1 ? "bg-gray-400" : i === 2 ? "bg-amber-700" : "bg-gray-300"
-                }`}>
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{emp.user.fullName}</p>
-                  <p className="text-[10px] text-gray-500">{emp.user.department}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-primary-600">{formatNumber(emp.totalDoanhThu)}đ</p>
-                  <p className="text-[10px] text-gray-500">{emp.totalChotDeal} deals</p>
-                </div>
-              </div>
-            ))}
-            {(!data.topEmployees || data.topEmployees.length === 0) && (
-              <p className="text-xs text-gray-400 text-center py-4">Chưa có dữ liệu</p>
-            )}
-          </div>
-        </div>
-
-        <div className="card p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">Phân bổ KPI tháng</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={[
-                  { name: "IB Zalo", value: data.monthKpi?.ibZalo || 0 },
-                  { name: "IB Facebook", value: data.monthKpi?.ibFacebook || 0 },
-                  { name: "Comment", value: data.monthKpi?.comment || 0 },
-                  { name: "Bài đăng", value: data.monthKpi?.baiDang || 0 },
-                  { name: "Follow-up", value: data.monthKpi?.followUp || 0 },
-                  { name: "Chốt Deal", value: data.monthKpi?.chotDeal || 0 },
-                ]}
-                cx="50%"
-                cy="50%"
-                innerRadius={45}
-                outerRadius={75}
-                paddingAngle={3}
-                dataKey="value"
-                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-              >
-                {CHART_COLORS.map((color, i) => (
-                  <Cell key={i} fill={color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {isKpiModalOpen && (
+        <KpiEntryPage 
+          isModal={true} 
+          defaultDate={selectedKpiDate}
+          onClose={() => setIsKpiModalOpen(false)} 
+          onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+        />
+      )}
     </div>
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function UserDashboard({ data, compare, selectedMonth, setSelectedMonth }: { data: any; compare: any; selectedMonth: string; setSelectedMonth: (m: string) => void }) {
+function AdminDashboard({ data, compare, selectedMonth, setSelectedMonth }: { data: any; compare: any; selectedMonth: string; setSelectedMonth: (m: string) => void }) {
+  const [adminTab, setAdminTab] = useState<"overview" | "report" | "target">("overview");
+
+  return (
+    <div className="space-y-4">
+      {/* Tab bar header */}
+      <div className="flex justify-center border-b border-gray-200/80 -mx-6 px-6 bg-white -mt-6 pt-4 sticky top-0 z-20 shadow-sm">
+        <button
+          onClick={() => setAdminTab("overview")}
+          className={`pb-3 px-4 text-sm font-semibold transition-all duration-200 border-b-2 relative ${
+            adminTab === "overview"
+              ? "border-primary-600 text-primary-600 font-bold"
+              : "border-transparent text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Tổng quan
+        </button>
+        <button
+          onClick={() => setAdminTab("report")}
+          className={`pb-3 px-4 text-sm font-semibold transition-all duration-200 border-b-2 relative ${
+            adminTab === "report"
+              ? "border-primary-600 text-primary-600 font-bold"
+              : "border-transparent text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Báo cáo
+        </button>
+        <button
+          onClick={() => setAdminTab("target")}
+          className={`pb-3 px-4 text-sm font-semibold transition-all duration-200 border-b-2 relative ${
+            adminTab === "target"
+              ? "border-primary-600 text-primary-600 font-bold"
+              : "border-transparent text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          KPI Target
+        </button>
+      </div>
+
+      {adminTab === "overview" && (
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Tổng quan</h1>
+              <p className="text-xs text-gray-500 mt-0.5">KPI toàn hệ thống</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chọn tháng:</label>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="input-field py-1.5 px-3 text-sm font-medium w-40 h-10"
+              />
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard title="Tổng nhân viên" value={data.totalUsers} icon={Users} color="blue" />
+            <StatCard title="Doanh thu tháng" value={data.monthKpi?.doanhThu || 0} icon={DollarSign} compare={compare?.doanhThu} color="green" />
+            <StatCard title="Chốt Deal tháng" value={data.monthKpi?.chotDeal || 0} icon={Handshake} compare={compare?.chotDeal} color="orange" />
+            <StatCard title="Tổng IB tháng" value={(data.monthKpi?.ibZalo || 0) + (data.monthKpi?.ibFacebook || 0)} icon={MessageSquare} color="purple" />
+          </div>
+
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Doanh thu 30 ngày</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={data.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="_id" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} interval="preserveStart" />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => formatNumber(v)} />
+                  <Tooltip formatter={(v: any) => formatNumber(Number(v))} />
+                  <Area type="monotone" dataKey="doanhThu" stroke="#6366f1" fill="#e0e7ff" strokeWidth={1.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">IB & Deal 30 ngày</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={data.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="_id" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} interval="preserveStart" />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="ibZalo" name="IB Zalo" fill="#4d08ef" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="ibFacebook" name="IB Facebook" fill="#1877f2" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="chotDeal" name="Chốt Deal" fill="#10b981" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Top Employees & KPI Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Top nhân viên (Doanh thu tháng)</h3>
+              <div className="space-y-2">
+                {data.topEmployees?.map((emp: { _id: string; user: { fullName: string; department: string }; totalDoanhThu: number; totalChotDeal: number }, i: number) => (
+                  <div key={emp._id} className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                      i === 0 ? "bg-yellow-500" : i === 1 ? "bg-gray-400" : i === 2 ? "bg-amber-700" : "bg-gray-300"
+                    }`}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-900 truncate">{emp.user.fullName}</p>
+                      <p className="text-[10px] text-gray-500">{emp.user.department}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-primary-600">{formatNumber(emp.totalDoanhThu)}đ</p>
+                      <p className="text-[10px] text-gray-500">{emp.totalChotDeal} deals</p>
+                    </div>
+                  </div>
+                ))}
+                {(!data.topEmployees || data.topEmployees.length === 0) && (
+                  <p className="text-xs text-gray-400 text-center py-4">Chưa có dữ liệu</p>
+                )}
+              </div>
+            </div>
+
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Phân bổ KPI tháng</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: "IB Zalo", value: data.monthKpi?.ibZalo || 0 },
+                      { name: "IB Facebook", value: data.monthKpi?.ibFacebook || 0 },
+                      { name: "Comment", value: data.monthKpi?.comment || 0 },
+                      { name: "Bài đăng", value: data.monthKpi?.baiDang || 0 },
+                      { name: "Follow-up", value: data.monthKpi?.followUp || 0 },
+                      { name: "Chốt Deal", value: data.monthKpi?.chotDeal || 0 },
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                  >
+                    {CHART_COLORS.map((color, i) => (
+                      <Cell key={i} fill={color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminTab === "report" && (
+        <div className="pt-2">
+          <ReportPage />
+        </div>
+      )}
+
+      {adminTab === "target" && (
+        <div className="pt-2">
+          <KpiTargetPage />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function UserDashboard({ data, compare, selectedMonth, setSelectedMonth, onOpenKpiModal }: { data: any; compare: any; selectedMonth: string; setSelectedMonth: (m: string) => void; onOpenKpiModal: () => void }) {
   const kpiLabels: Record<string, string> = {
     ibZalo: "IB Zalo", ibFacebook: "IB Facebook", comment: "Comment",
     baiDang: "Bài đăng", khachRep: "Khách rep", followUp: "Follow-up",
@@ -256,17 +430,25 @@ function UserDashboard({ data, compare, selectedMonth, setSelectedMonth }: { dat
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-xl font-bold text-gray-900">Tổng quan</h1>
           <p className="text-xs text-gray-500 mt-0.5">KPI cá nhân của bạn</p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chọn tháng:</label>
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="input-field py-1.5 px-3 text-sm font-medium w-40 h-10"
-          />
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={onOpenKpiModal} 
+            className="px-5 py-2.5 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors flex items-center gap-2 shadow-sm text-sm h-10"
+          >
+            Nhập KPI
+          </button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chọn tháng:</label>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="input-field py-1.5 px-3 text-sm font-medium w-40 h-10"
+            />
+          </div>
         </div>
       </div>
 
@@ -288,8 +470,8 @@ function UserDashboard({ data, compare, selectedMonth, setSelectedMonth }: { dat
               if (dailyTarget === 0) return null;
               
               const [yr, mn] = selectedMonth.split("-");
-              const daysInMonth = new Date(parseInt(yr), parseInt(mn), 0).getDate();
-              const target = dailyTarget * daysInMonth;
+              const workingDays = getWorkingDaysInMonth(parseInt(yr), parseInt(mn));
+              const target = dailyTarget * workingDays;
               const actual = data.monthKpi?.[key] || 0;
               const percent = Math.round((actual / target) * 100);
               const isAchieved = actual >= target;

@@ -27,7 +27,6 @@ export default function KpiTargetPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: "COMPANY", targetRef: "ALL", month: "", targets: {} as Record<string, number> });
-  const [viewMode, setViewMode] = useState<"target" | "actual" | "progress">("target");
 
   useEffect(() => {
     Promise.all([
@@ -87,37 +86,6 @@ export default function KpiTargetPage() {
           <p className="text-sm text-gray-500 mt-1">Cấu hình mục tiêu KPI</p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Switch View Mode */}
-          <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200/50">
-            <button
-              onClick={() => setViewMode("target")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${viewMode === "target"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
-                }`}
-            >
-              Mục tiêu
-            </button>
-            <button
-              onClick={() => setViewMode("actual")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${viewMode === "actual"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
-                }`}
-            >
-              Thực tế
-            </button>
-            <button
-              onClick={() => setViewMode("progress")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${viewMode === "progress"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
-                }`}
-            >
-              Hiệu suất (% đạt)
-            </button>
-          </div>
-
           <button onClick={() => { setShowForm(true); setEditing(null); setForm({ type: "COMPANY", targetRef: "ALL", month: currentMonth, targets: {} }); }} className="btn-primary flex items-center gap-2">
             <Plus size={18} /> Thêm Target
           </button>
@@ -218,38 +186,9 @@ export default function KpiTargetPage() {
                 <td className="px-4 py-3">{t.month}</td>
                 {KPI_FIELDS.map((f) => {
                   const targetVal = t.targets[f.key] || 0;
-                  const actualVal = t.actuals?.[f.key] || 0;
-                  const [yr, mn] = t.month.split("-");
-                  const daysInMonth = new Date(parseInt(yr), parseInt(mn), 0).getDate();
-                  const monthlyTargetVal = targetVal * daysInMonth;
-                  const percent = monthlyTargetVal > 0 ? Math.round((actualVal / monthlyTargetVal) * 100) : 0;
-
-                  if (viewMode === "target") {
-                    return (
-                      <td key={f.key} className="px-3 py-4 text-center font-medium text-gray-600">
-                        {targetVal.toLocaleString("vi-VN")}
-                      </td>
-                    );
-                  }
-
-                  if (viewMode === "actual") {
-                    return (
-                      <td key={f.key} className="px-3 py-4 text-center font-semibold text-gray-900">
-                        {actualVal.toLocaleString("vi-VN")}
-                      </td>
-                    );
-                  }
-
-                  // Progress mode: show clean pill badges
-                  const isCompleted = percent >= 100;
                   return (
-                    <td key={f.key} className="px-3 py-4 text-center" title={`${actualVal.toLocaleString("vi-VN")} / ${monthlyTargetVal.toLocaleString("vi-VN")} (Chỉ tiêu ngày: ${targetVal.toLocaleString("vi-VN")}) - ${isCompleted ? "Đạt KPI" : "Chưa đủ KPI"}`}>
-                      <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${isCompleted
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-rose-50 text-rose-700 border border-rose-200"
-                        }`}>
-                        {percent}%
-                      </span>
+                    <td key={f.key} className="px-3 py-4 text-center font-medium text-gray-600">
+                      {targetVal.toLocaleString("vi-VN")}
                     </td>
                   );
                 })}

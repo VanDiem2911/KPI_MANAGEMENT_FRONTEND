@@ -116,7 +116,7 @@ export default function KpiHistoryPage() {
                           <Eye size={18} />
                         </button>
                         {canEdit && (
-                          <Link to={`/kpi/entry?date=${toLocalYYYYMMDD(e.date)}`} className="text-gray-400 hover:text-blue-600 transition-colors" title="Chỉnh sửa ngày này">
+                          <Link to={`/?tab=entry&date=${toLocalYYYYMMDD(e.date)}`} className="text-gray-400 hover:text-blue-600 transition-colors" title="Chỉnh sửa ngày này">
                             <Pencil size={18} />
                           </Link>
                         )}

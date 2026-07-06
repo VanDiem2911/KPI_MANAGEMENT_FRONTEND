@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useSearchParams } from "react-router-dom";
 import { kpiApi, usersApi, targetApi } from "../api";
 import { useAuth } from "../contexts/AuthContext";
-import { Save, CheckCircle, AlertTriangle } from "lucide-react";
+import { Save, CheckCircle, AlertTriangle, X } from "lucide-react";
 
 interface KpiFormData {
   date: string;
@@ -22,14 +22,28 @@ interface KpiFormData {
   ghiChu: string;
 }
 
-const today = new Date().toISOString().split("T")[0];
+const getLocalTodayString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const today = getLocalTodayString();
 
 const getNum = (v: any) => {
   const n = Number(v);
   return isNaN(n) ? 0 : n;
 };
 
-export default function KpiEntryPage() {
+interface KpiEntryPageProps {
+  isModal?: boolean;
+  onClose?: () => void;
+  onSuccess?: () => void;
+  defaultDate?: string;
+}
+
+export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defaultDate }: KpiEntryPageProps) {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const queryDate = searchParams.get("date") || today;
@@ -77,12 +91,13 @@ export default function KpiEntryPage() {
     }
   }, [user]);
 
-  // Sync form date when URL query param changes (e.g. clicking sidebar menu "Nhập KPI")
+  // Sync form date when URL query param or defaultDate changes
   useEffect(() => {
-    if (queryDate) {
-      setValue("date", queryDate);
+    const activeDate = defaultDate || queryDate || today;
+    if (activeDate) {
+      setValue("date", activeDate);
     }
-  }, [queryDate, setValue]);
+  }, [defaultDate, queryDate, setValue]);
 
   // Load existing KPI for selected date and target employee
   useEffect(() => {
@@ -164,7 +179,11 @@ export default function KpiEntryPage() {
       await kpiApi.create(cleanData);
       setSuccess(true);
       setIsUpdate(true);
-      setTimeout(() => setSuccess(false), 3000);
+      if (onSuccess) onSuccess();
+      setTimeout(() => {
+        setSuccess(false);
+        if (onClose) onClose();
+      }, 1500);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Lỗi khi lưu KPI";
       setError(msg);
@@ -180,7 +199,11 @@ export default function KpiEntryPage() {
         {fields.map((f) => {
           const targetVal = activeTarget?.targets?.[f.name] || 0;
           const currentVal = Number(watch(f.name)) || 0;
-          const hasTarget = targetVal > 0;
+          const watchDate = watch("date");
+          const dateObj = watchDate ? new Date(watchDate) : new Date();
+          const dayOfWeek = dateObj.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          const hasTarget = targetVal > 0 && !isWeekend;
           const isKpiAchieved = currentVal >= targetVal;
 
           return (
@@ -238,6 +261,123 @@ export default function KpiEntryPage() {
     </div>
   );
 
+  const formContent = (
+    <>
+      {/* Date & User selectors */}
+      <div className="card grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="label">Ngày nhập KPI</label>
+          <input
+            type="date"
+            {...register("date", { required: true })}
+            className="input-field disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+            max={today}
+            disabled={!isAdmin}
+          />
+        </div>
+        {isAdmin && (
+          <div>
+            <label className="label">Nhân viên</label>
+            <select
+              value={targetUserId}
+              onChange={(e) => setTargetUserId(e.target.value)}
+              className="input-field"
+            >
+              <option value={user?._id}>Bản thân (Admin)</option>
+              {users.map((u) => (
+                <option key={u._id} value={u._id}>{u.fullName}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {fieldGroup("IB (Inbound)", [
+        { name: "ibZalo", label: "IB Zalo", min: 0 },
+        { name: "ibFacebook", label: "IB Facebook", min: 0 },
+      ])}
+
+      {fieldGroup("Tương tác", [
+        { name: "comment", label: "Comment", min: 0 },
+        { name: "baiDang", label: "Bài đăng", min: 0 },
+      ])}
+
+      {fieldGroup("Khách hàng", [
+        { name: "khachRep", label: `Khách rep (max: ${getNum(watchIbZalo) + getNum(watchIbFacebook)})`, min: 0, max: getNum(watchIbZalo) + getNum(watchIbFacebook) },
+        { name: "khachChuDongIB", label: "Khách chủ động IB", min: 0 },
+      ])}
+
+      {fieldGroup("Chăm sóc", [
+        { name: "followUp", label: `Follow-up (max: ${getNum(watchKhachRep)})`, min: 0, max: getNum(watchKhachRep) },
+        { name: "baoGia", label: `Báo giá (max: ${getNum(watchFollowUp)})`, min: 0, max: getNum(watchFollowUp) },
+      ])}
+
+      {fieldGroup("Kết quả", [
+        { name: "chotDeal", label: `Chốt Deal (max: ${getNum(watchBaoGia)})`, min: 0, max: getNum(watchBaoGia) },
+        { name: "doanhThu", label: "Doanh thu (VNĐ)", min: 0 },
+      ])}
+
+      {fieldGroup("Thông tin bổ sung", [
+        { name: "nhuCauKhach", label: "Nhu cầu khách", type: "textarea", required: needNhuCau, placeholder: needNhuCau ? "Bắt buộc khi có khách chủ động IB" : "Không bắt buộc" },
+        { name: "taiSaoMatKhach", label: "Tại sao mất khách", type: "textarea", required: needTaiSao, placeholder: needTaiSao ? "Bắt buộc khi khách rep > báo giá hoặc chốt deal" : "Không bắt buộc" },
+        { name: "ghiChu", label: "Ghi chú", type: "textarea", placeholder: "Ghi chú thêm..." },
+      ])}
+    </>
+  );
+
+  if (isModal) {
+    return (
+      <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-gray-50 rounded-2xl shadow-2xl max-w-4xl w-full flex flex-col max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="bg-red-600 px-6 py-4 flex items-center justify-between text-white">
+            <div>
+              <h2 className="text-lg font-bold">Nhập KPI</h2>
+              <p className="text-xs text-red-100 mt-0.5">
+                {isUpdate ? "Cập nhật KPI cho ngày đã chọn" : "Nhập KPI mới cho ngày đã chọn"}
+              </p>
+            </div>
+            <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+            )}
+            {success && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
+                <CheckCircle size={16} /> Lưu thành công!
+              </div>
+            )}
+            {!isEditable && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 flex items-center gap-2">
+                <AlertTriangle size={16} /> Bạn chỉ được phép nhập hoặc chỉnh sửa KPI của ngày hôm nay ({today}). Những ngày trước đó đã bị khóa.
+              </div>
+            )}
+
+            <form id="kpi-modal-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              {formContent}
+            </form>
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 bg-white border-t border-gray-100 flex justify-end gap-3 shrink-0">
+            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+              Hủy
+            </button>
+            <button type="submit" form="kpi-modal-form" disabled={saving || !isEditable} className="px-6 py-2.5 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors flex items-center gap-2 shadow-sm">
+              <Save size={16} />
+              {saving ? "Đang lưu..." : isUpdate ? "Cập nhật KPI" : "Lưu KPI"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -274,65 +414,7 @@ export default function KpiEntryPage() {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Date & User selectors */}
-        <div className="card grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Ngày nhập KPI</label>
-            <input
-              type="date"
-              {...register("date", { required: true })}
-              className="input-field disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-              max={today}
-              disabled={!isAdmin}
-            />
-          </div>
-          {isAdmin && (
-            <div>
-              <label className="label">Nhân viên</label>
-              <select
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(e.target.value)}
-                className="input-field"
-              >
-                <option value={user?._id}>Bản thân (Admin)</option>
-                {users.map((u) => (
-                  <option key={u._id} value={u._id}>{u.fullName}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {fieldGroup("IB (Inbound)", [
-          { name: "ibZalo", label: "IB Zalo", min: 0 },
-          { name: "ibFacebook", label: "IB Facebook", min: 0 },
-        ])}
-
-        {fieldGroup("Tương tác", [
-          { name: "comment", label: "Comment", min: 0 },
-          { name: "baiDang", label: "Bài đăng", min: 0 },
-        ])}
-
-        {fieldGroup("Khách hàng", [
-          { name: "khachRep", label: `Khách rep (max: ${getNum(watchIbZalo) + getNum(watchIbFacebook)})`, min: 0, max: getNum(watchIbZalo) + getNum(watchIbFacebook) },
-          { name: "khachChuDongIB", label: "Khách chủ động IB", min: 0 },
-        ])}
-
-        {fieldGroup("Chăm sóc", [
-          { name: "followUp", label: `Follow-up (max: ${getNum(watchKhachRep)})`, min: 0, max: getNum(watchKhachRep) },
-          { name: "baoGia", label: `Báo giá (max: ${getNum(watchFollowUp)})`, min: 0, max: getNum(watchFollowUp) },
-        ])}
-
-        {fieldGroup("Kết quả", [
-          { name: "chotDeal", label: `Chốt Deal (max: ${getNum(watchBaoGia)})`, min: 0, max: getNum(watchBaoGia) },
-          { name: "doanhThu", label: "Doanh thu (VNĐ)", min: 0 },
-        ])}
-
-        {fieldGroup("Thông tin bổ sung", [
-          { name: "nhuCauKhach", label: "Nhu cầu khách", type: "textarea", required: needNhuCau, placeholder: needNhuCau ? "Bắt buộc khi có khách chủ động IB" : "Không bắt buộc" },
-          { name: "taiSaoMatKhach", label: "Tại sao mất khách", type: "textarea", required: needTaiSao, placeholder: needTaiSao ? "Bắt buộc khi khách rep > báo giá hoặc chốt deal" : "Không bắt buộc" },
-          { name: "ghiChu", label: "Ghi chú", type: "textarea", placeholder: "Ghi chú thêm..." },
-        ])}
+        {formContent}
 
         <div className="flex justify-end">
           <button type="submit" disabled={saving || !isEditable} className="btn-primary flex items-center gap-2 px-6 py-3">
