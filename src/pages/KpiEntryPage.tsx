@@ -73,6 +73,45 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
   const watchBaoGia = watch("baoGia");
   const watchChotDeal = watch("chotDeal");
   const watchKhachChuDongIB = watch("khachChuDongIB");
+  const watchDoanhThu = watch("doanhThu");
+  const watchNhuCauKhach = watch("nhuCauKhach");
+  const watchTaiSaoMatKhach = watch("taiSaoMatKhach");
+
+  const valIbZalo = getNum(watchIbZalo);
+  const valIbFacebook = getNum(watchIbFacebook);
+  const valKhachRep = getNum(watchKhachRep);
+  const valFollowUp = getNum(watchFollowUp);
+  const valBaoGia = getNum(watchBaoGia);
+  const valChotDeal = getNum(watchChotDeal);
+  const valDoanhThu = getNum(watchDoanhThu);
+  const valKhachChuDongIB = getNum(watchKhachChuDongIB);
+
+  const realTimeErrors: Record<string, string> = {};
+
+  if (valKhachRep > valIbZalo + valIbFacebook) {
+    realTimeErrors.khachRep = `Khách rep (${valKhachRep}) không được lớn hơn tổng Inbox Zalo + Facebook (${valIbZalo + valIbFacebook})`;
+  }
+  if (valFollowUp > valKhachRep) {
+    realTimeErrors.followUp = `Follow-up (${valFollowUp}) không được lớn hơn Khách rep (${valKhachRep})`;
+  }
+  if (valBaoGia > valFollowUp) {
+    realTimeErrors.baoGia = `Báo giá (${valBaoGia}) không được lớn hơn Follow-up (${valFollowUp})`;
+  }
+  if (valChotDeal > valBaoGia) {
+    realTimeErrors.chotDeal = `Chốt Deal (${valChotDeal}) không được lớn hơn Báo giá (${valBaoGia})`;
+  }
+  if (valDoanhThu > 0 && valChotDeal === 0) {
+    realTimeErrors.doanhThu = "Doanh thu chỉ có thể lớn hơn 0 khi đã Chốt Deal (Chốt Deal phải > 0)";
+  }
+  if (valChotDeal > 0 && valDoanhThu === 0) {
+    realTimeErrors.doanhThu = "Khi Chốt Deal lớn hơn 0, Doanh thu phải lớn hơn 0";
+  }
+  if (valKhachChuDongIB > 0 && !watchNhuCauKhach?.trim()) {
+    realTimeErrors.nhuCauKhach = "Nhu cầu khách là bắt buộc khi Khách chủ động IB > 0";
+  }
+  if ((valKhachRep > valBaoGia || valKhachRep > valChotDeal) && !watchTaiSaoMatKhach?.trim()) {
+    realTimeErrors.taiSaoMatKhach = "Tại sao mất khách là bắt buộc khi Khách rep > Báo giá hoặc Khách rep > Chốt Deal";
+  }
 
   const entryMonth = watchDate ? watchDate.substring(0, 7) : "";
   const userTarget = targets.find(t => t.type === "USER" && t.targetRef === targetUserId && t.month === entryMonth);
@@ -144,20 +183,8 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
       return;
     }
 
-    if (getNum(formData.khachChuDongIB) > 0 && !formData.nhuCauKhach?.trim()) {
-      setError("Nhu cầu khách là bắt buộc khi Khách chủ động IB > 0");
-      return;
-    }
-    if ((getNum(formData.khachRep) > getNum(formData.baoGia) || getNum(formData.khachRep) > getNum(formData.chotDeal)) && !formData.taiSaoMatKhach?.trim()) {
-      setError("Tại sao mất khách là bắt buộc khi Khách rep > Báo giá hoặc Khách rep > Chốt Deal");
-      return;
-    }
-    if (getNum(formData.doanhThu) > 0 && getNum(formData.chotDeal) === 0) {
-      setError("Doanh thu chỉ có thể lớn hơn 0 khi đã Chốt Deal (Chốt Deal phải > 0)");
-      return;
-    }
-    if (getNum(formData.chotDeal) > 0 && getNum(formData.doanhThu) === 0) {
-      setError("Khi Chốt Deal lớn hơn 0, Doanh thu phải lớn hơn 0");
+    if (Object.keys(realTimeErrors).length > 0) {
+      setError("Vui lòng sửa các lỗi logic nhập liệu bên dưới.");
       return;
     }
 
@@ -240,7 +267,6 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
                     required: f.required ? `${f.label} là bắt buộc` : false,
                     valueAsNumber: f.type !== "textarea" && f.type !== "text",
                     min: f.min !== undefined ? { value: f.min, message: `${f.label} phải >= ${f.min}` } : undefined,
-                    max: f.max !== undefined ? { value: f.max, message: `${f.label} phải <= ${f.max}` } : undefined,
                     validate: f.type !== "textarea" && f.type !== "text" ? (v) => {
                       if (v === "" || v === undefined || v === null || isNaN(Number(v))) return true;
                       return Number.isInteger(Number(v)) || "Phải là số nguyên";
@@ -259,9 +285,14 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
                   }
                 </p>
               )}
-              {errors[f.name] && (
+              {errors[f.name] ? (
                 <p className="text-xs text-red-500 mt-1">{errors[f.name]?.message}</p>
-              )}
+              ) : realTimeErrors[f.name as string] ? (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1 font-medium text-red-600">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  {realTimeErrors[f.name as string]}
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -311,17 +342,17 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
       ])}
 
       {fieldGroup("Khách hàng", [
-        { name: "khachRep", label: `Khách rep (max: ${getNum(watchIbZalo) + getNum(watchIbFacebook)})`, min: 0, max: getNum(watchIbZalo) + getNum(watchIbFacebook) },
+        { name: "khachRep", label: `Khách rep (max: ${valIbZalo + valIbFacebook})`, min: 0 },
         { name: "khachChuDongIB", label: "Khách chủ động IB", min: 0 },
       ])}
 
       {fieldGroup("Chăm sóc", [
-        { name: "followUp", label: `Follow-up (max: ${getNum(watchKhachRep)})`, min: 0, max: getNum(watchKhachRep) },
-        { name: "baoGia", label: `Báo giá (max: ${getNum(watchFollowUp)})`, min: 0, max: getNum(watchFollowUp) },
+        { name: "followUp", label: `Follow-up (max: ${valKhachRep})`, min: 0 },
+        { name: "baoGia", label: `Báo giá (max: ${valFollowUp})`, min: 0 },
       ])}
 
       {fieldGroup("Kết quả", [
-        { name: "chotDeal", label: `Chốt Deal (max: ${getNum(watchBaoGia)})`, min: 0, max: getNum(watchBaoGia) },
+        { name: "chotDeal", label: `Chốt Deal (max: ${valBaoGia})`, min: 0 },
         { name: "doanhThu", label: "Doanh thu (VNĐ)", min: 0 },
       ])}
 
