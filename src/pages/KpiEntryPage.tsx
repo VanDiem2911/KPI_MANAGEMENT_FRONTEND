@@ -152,6 +152,14 @@ export default function KpiEntryPage({ isModal = false, onClose, onSuccess, defa
       setError("Tại sao mất khách là bắt buộc khi Khách rep > Báo giá hoặc Khách rep > Chốt Deal");
       return;
     }
+    if (getNum(formData.doanhThu) > 0 && getNum(formData.chotDeal) === 0) {
+      setError("Doanh thu chỉ có thể lớn hơn 0 khi đã Chốt Deal (Chốt Deal phải > 0)");
+      return;
+    }
+    if (getNum(formData.chotDeal) > 0 && getNum(formData.doanhThu) === 0) {
+      setError("Khi Chốt Deal lớn hơn 0, Doanh thu phải lớn hơn 0");
+      return;
+    }
 
     setSaving(true);
     setError("");
