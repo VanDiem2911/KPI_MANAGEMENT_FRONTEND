@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
-import Tracker from "kpi-tracker";
+import Tracker from "kpi-tracker-vandiem";
 
 
 Tracker.init({

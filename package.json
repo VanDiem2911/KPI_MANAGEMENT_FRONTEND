@@ -15,7 +15,7 @@
     "file-saver": "^2.0.5",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "kpi-tracker": "file:../../Viruss/Viruss/kpi-tracker",
+    "kpi-tracker-vandiem": "^1.0.0",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
